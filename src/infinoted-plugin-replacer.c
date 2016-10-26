@@ -28,7 +28,11 @@ struct _InfinotedPluginReplacer {
   InfinotedPluginManager* manager;
   /* Greeting text for all new connections */
   gchar* greeting_text;
+};
+typedef struct _InfinotedPluginReplacerSession InfinotedPluginReplacerSession;
+struct _InfinotedPluginReplacerSession{
   InfTextBuffer* buffer;
+  InfSession* session;
 };
 
 static void
@@ -80,6 +84,27 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
   g_free(plugin->greeting_text);
 }
 
+static void qualcosa(InfTextBuffer *inftextbuffer,
+					guint          arg1,
+					InfTextChunk  *arg2,
+					InfUser       *arg3,
+					gpointer       user_data){
+  /*InfinotedPluginReplacerSession* session_info = 
+	(InfinotedPluginReplacerSession*) user_data;
+  const gchar* text = g_malloc(5*sizeof(gchar));
+  
+  InfUserTable* user_table = inf_session_get_user_table(session_info->session);
+  
+  
+  text = "ciao";
+  inf_text_buffer_insert_text(session_info->buffer,
+							  0,
+							  text,
+							  4,
+							  4,
+							  arg3);*/
+}
+
 static void
 infinoted_plugin_replacer_greet_user(InfinotedPluginReplacer* plugin,
                                     InfUser* user)
@@ -87,12 +112,6 @@ infinoted_plugin_replacer_greet_user(InfinotedPluginReplacer* plugin,
   InfinotedLog* log;
   log = infinoted_plugin_manager_get_log(plugin->manager);
   
-  inf_text_buffer_insert_text(plugin->buffer,
-							  0,
-							  "ciao",
-							  4,
-							  4,
-							  user);
   infinoted_log_info(
     log,
     "%s, %s",
@@ -106,6 +125,7 @@ infinoted_plugin_replacer_available_user_added_cb(InfUserTable* user_table,
                                                  InfUser* user,
                                                  gpointer user_data)
 {
+	
   infinoted_plugin_replacer_greet_user(
     (InfinotedPluginReplacer*)user_data,
     user
@@ -131,22 +151,31 @@ static void
 infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
                                        InfSessionProxy* proxy,
                                        gpointer plugin_info,
-                                       gpointer session_info)
+                                       gpointer session_info_mem)
 {
   InfSession* session;
   InfUserTable* user_table;
-
+  InfinotedPluginReplacerSession* session_info = 
+	(InfinotedPluginReplacerSession*) session_info_mem;
+  
   g_object_get(G_OBJECT(proxy), "session", &session, NULL);
+  session_info->buffer = 
+	(InfTextBuffer*) inf_session_get_buffer(session);
+  session_info->session = session;
   user_table = inf_session_get_user_table(session);
-  InfTextBuffer* buffer = (InfTextBuffer*) inf_session_get_buffer(session);
-  ((InfinotedPluginReplacer*) plugin_info)->buffer= buffer;
-
+  
   /* Greet every user that will join: */
   g_signal_connect(
     G_OBJECT(user_table),
     "add-available-user",
     G_CALLBACK(infinoted_plugin_replacer_available_user_added_cb),
     plugin_info
+  );
+  g_signal_connect(
+    G_OBJECT(session_info->buffer),
+    "text-insterted",
+    G_CALLBACK(qualcosa),
+    session_info
   );
 
   /* Greet every user that has already joined: */
@@ -206,8 +235,8 @@ const InfinotedPlugin INFINOTED_PLUGIN = {
   INFINOTED_PLUGIN_REPLACER_OPTIONS,
   sizeof(InfinotedPluginReplacer),
   0,
-  0,
-  NULL,
+  sizeof(InfinotedPluginReplacerSession),
+  "InfTextSession",
   infinoted_plugin_replacer_info_initialize,
   infinoted_plugin_replacer_initialize,
   infinoted_plugin_replacer_deinitialize,
