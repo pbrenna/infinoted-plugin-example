@@ -9,22 +9,14 @@ This is originally based on the Linekeeper plugin provided with the
 [libinfinity](https://github.com/gobby/libinfinity/).
 
 # Compiling 
+This was tested on Arch Linux:
 ```
-$ autogen.sh --prefix=/usr
+$ ./autogen.sh --prefix=/usr
 $ sudo make install
 ```
 
 # Usage
-
-Add "replacer" to the plugin list in your "infinoted.conf" file; then
-add a ``[replacer]`` section:
-
-```
-[replacer]
-replace-table = /path/to/replace_table.txt
-
-```
-Now create your ``replace_table.txt``: 
+1. Create your ``replace_table.txt``: 
 ```
 [replacer]
 alpha = α
@@ -32,6 +24,17 @@ beta_ = β
 ```
 A trailing underscore in the rule will only allow the replacement
 to happen if the word is followed by a space.
+**Important**: self-recursion in a rule will prevent server startup;
+recursion between rules must be used with caution.
+
+2. Add "replacer" to the plugin list in your ``infinoted.conf`` file
+3. Append a ``[replacer]`` section to ``infinoted.conf``:
+
+```
+[replacer]
+replace-table = /path/to/your/replace_table.txt
+
+```
 
 ## Licensing
 
