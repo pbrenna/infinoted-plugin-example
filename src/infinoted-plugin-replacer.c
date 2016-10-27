@@ -69,7 +69,6 @@ struct _InfinotedPluginReplacerSessionInfo {
   InfTextBuffer* buffer;
   InfIoDispatch* dispatch;
   gboolean enabled;
-  gboolean locked;
 };
 
 typedef struct _InfinotedPluginReplacerHasAvailableUsersData
@@ -162,6 +161,10 @@ static void
 infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 {
 	//block text-insert and text-erase signal dispatch
+
+	infinoted_plugin_replacer_check_enabled(info);  
+	if (FALSE == info->enabled)
+		return;
 	g_signal_handlers_block_by_func(
     info->buffer,
     G_CALLBACK(infinoted_plugin_replacer_text_inserted_cb),
@@ -172,9 +175,6 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
     G_CALLBACK(infinoted_plugin_replacer_text_erased_cb),
     info
   );
-	infinoted_plugin_replacer_check_enabled( info);  
-	if (FALSE == info->enabled)
-		return;
   //guint substitutions = 0; //conto delle sostituzioni, per evitare
 														 //ricorsioni disastrose
 	InfTextBuffer* buf = info->buffer;
@@ -202,12 +202,12 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		
 		infinoted_plugin_replacer_clean_key(key);
 		
-		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
-				infinoted_log_info(
-					log,
-					"key: %s", key);
 		//get position, if present
 		while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
+			InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+					infinoted_log_info(
+					log,
+					"rule: %s", key);
 			//g_strstr_len returns a pointer to the location of key
 			//however we need the character count to the location
 			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
@@ -555,7 +555,6 @@ infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
   info->user = NULL;
   info->dispatch = NULL;
   info->enabled = FALSE;
-  info->locked = FALSE;
   g_object_ref(proxy);
 
   g_object_get(G_OBJECT(proxy), "session", &session, NULL);
