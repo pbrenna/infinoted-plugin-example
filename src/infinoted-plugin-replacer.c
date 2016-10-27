@@ -28,11 +28,14 @@
 #include "inf-i18n.h"
 #include <string.h>
 
-int once = 0;
+#define INFINOTED_PLUGIN_REPLACER_KEY_GROUP "replacer"
 typedef struct _InfinotedPluginReplacer InfinotedPluginReplacer;
 struct _InfinotedPluginReplacer {
   InfinotedPluginManager* manager;
   gchar* replace_table;
+  gchar** replace_words;
+  GKeyFile* replace_dict;
+  gsize replace_words_len;
 };
 
 typedef struct _InfinotedPluginReplacerSessionInfo
@@ -69,7 +72,16 @@ infinoted_plugin_replacer_parse_table(InfinotedPluginReplacer* plugin,
 																			GError** error,
 																			gchar* table_file)
 {
-	
+	/*gchar** lines = g_strsplit(table_file, "\n", -1);
+	guint line_num = 0;
+	while (NULL != (cur_line = lines[line_num])) {
+		gchar** parts = g_strsplit(cur_line, " ", 2);
+		if(parts[0] == NULL || parts[1] == NULL){
+			g_set_error(error, 0, 1, "Syntax error: %s:%d", plugin->table_file, line_num);
+			
+		}
+	}
+	g_strfreev(lines);//forse*/
 }
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
@@ -80,7 +92,32 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
   plugin = (InfinotedPluginReplacer*)plugin_info;
 
   plugin->manager = manager;
-
+	GKeyFile* gkf = g_key_file_new();
+	gboolean success = g_key_file_load_from_file(gkf, plugin->replace_table, G_KEY_FILE_NONE, error);
+	if (FALSE == success)
+		return FALSE;
+	plugin->replace_dict = gkf;
+	plugin->replace_words = g_key_file_get_keys (gkf,
+																							 INFINOTED_PLUGIN_REPLACER_KEY_GROUP,
+																							 &plugin->replace_words_len,
+																							 error);
+	if (NULL == plugin->replace_words)
+		return FALSE;
+	
+	//foreach replace_words
+	for (guint i = 0; i < plugin->replace_words_len; i++) {
+		//check no recursion:
+		//get value
+		gchar* key = plugin->replace_words[i];
+		gchar* val = g_key_file_get_value(gkf, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, error);
+		if (NULL == val)
+			return FALSE;
+		if (NULL != strstr(val, key)) {
+			g_set_error(error, 0, 1, "recursive key '%s' in group '%s'", key, INFINOTED_PLUGIN_REPLACER_KEY_GROUP);
+			return FALSE;
+		}
+	}
+	/*
 	//read file
 	gchar* table_file;	//la variabile viene allocata nella funzione g_file_get_contents
 	gsize table_file_len;
@@ -91,7 +128,7 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 	if (success == TRUE) {
 		infinoted_plugin_replacer_parse_table(plugin);
 	}
-	g_free(table_file);
+	g_free(table_file);*/
 	return success;
 }
 
@@ -100,29 +137,44 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
 {
   InfinotedPluginReplacer* plugin;
   plugin = (InfinotedPluginReplacer*)plugin_info;
+  g_strfreev(plugin->replace_words);
 }
 
 
 static void
 infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 {
-  /*guint n;
-  gchar* text;
-	if (once == 0){
-		once = 1;
-		n = 3;
-		text = g_malloc(n * sizeof(gchar));
-		memset(text, 'a', n);
+	if (FALSE == info->enabled)
+		return;
+	//get buffer text
+	InfTextBuffer* buf = info->buffer;
 
-		inf_text_buffer_insert_text(
-			info->buffer,
-			0,
-			text,
-			n,
-			n,
-			info->user
-		);
-	}*/
+  
+  //guint substitutions = 0; //conto delle sostituzioni, per evitare
+														 //ricorsioni disastrose
+
+  //foreach replace_words
+	for (guint i = 0; i < info->plugin->replace_words_len; i++) {
+		gint diff = 0;
+		InfTextChunk* chunk = inf_text_buffer_get_slice(buf,
+																										0,
+																										inf_text_buffer_get_length(buf));
+		gsize out_len;
+		gchar* buf_str = inf_text_chunk_get_text(chunk, &out_len);
+		gchar* tmp_buf_str = buf_str;
+		gchar* key = info->plugin->replace_words[i];
+		gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
+		//get position, if present
+		if (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
+			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
+			offset += diff;
+			//replace
+			diff += g_utf8_strlen(val, -1) - g_utf8_strlen(key, -1);
+			inf_text_buffer_erase_text(buf, offset, g_utf8_strlen(key, -1), info->user);
+			inf_text_buffer_insert_text(buf,offset,val,strlen(val), g_utf8_strlen(val, -1), info->user);
+		}
+		
+	}
 }
 
 static void
