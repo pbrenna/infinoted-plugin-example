@@ -17,24 +17,23 @@ $ sudo make install
 
 # Usage
 1. Create your ``replace_table.txt``: 
-```
-[replacer]
-alpha = α
-beta_ = β
-```
-A trailing underscore in the rule will only allow the replacement
-to happen if the word is followed by a space.
-**Important**: self-recursion in a rule will prevent server startup;
-recursion between rules must be used with caution.
+   ```
+   [replacer]
+   alpha = α
+   beta_ = β
+   ```
+   A trailing underscore in the rule will only allow the replacement
+   to happen if the word is followed by a space.
+   **Important**: self-recursion in a rule will prevent server startup;
+   recursion between rules must be used with caution.
 
 2. Add "replacer" to the plugin list in your ``infinoted.conf`` file
 3. Append a ``[replacer]`` section to ``infinoted.conf``:
 
-```
-[replacer]
-replace-table = /path/to/your/replace_table.txt
-
-```
+   ```
+   [replacer]
+   replace-table = /path/to/your/replace_table.txt
+   ```
 
 ## Licensing
 
