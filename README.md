@@ -5,6 +5,9 @@ This is a simple example plugin for
 the dedicated Gobby server. This plugin replaces text with custom 
 snippets defined in a configuration file.
 
+This is originally based on the Linekeeper plugin provided with the 
+[libinfinity](https://github.com/gobby/libinfinity/).
+
 # Usage
 
 
