@@ -1,3 +1,24 @@
+/*
+ * infinoted-plugin-replacer - a real-time replacer for text sessions
+ * on an infinoted server.
+ * Copyright (C) 2016 Pietro Brenna <pietrobrenna@zoho.com>
+ * Copyright (C) 2016 Alessandro Bregoli <>
+ * 
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free
+ * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
+*/
 /* libinfinity - a GObject-based infinote implementation
  * Copyright (C) 2007-2015 Armin Burgmeier <armin@arbur.net>
  *
@@ -25,7 +46,7 @@
 
 #include <libinfinity/common/inf-request-result.h>
 #include "inf-signals.h"
-#include "inf-i18n.h"
+//#include "inf-i18n.h"
 #include <string.h>
 
 #define INFINOTED_PLUGIN_REPLACER_KEY_GROUP "replacer"
@@ -48,6 +69,7 @@ struct _InfinotedPluginReplacerSessionInfo {
   InfTextBuffer* buffer;
   InfIoDispatch* dispatch;
   gboolean enabled;
+  gboolean locked;
 };
 
 typedef struct _InfinotedPluginReplacerHasAvailableUsersData
@@ -67,22 +89,15 @@ infinoted_plugin_replacer_info_initialize(gpointer plugin_info){
 }
 
 
-static void
-infinoted_plugin_replacer_parse_table(InfinotedPluginReplacer* plugin,
-																			GError** error,
-																			gchar* table_file)
-{
-	/*gchar** lines = g_strsplit(table_file, "\n", -1);
-	guint line_num = 0;
-	while (NULL != (cur_line = lines[line_num])) {
-		gchar** parts = g_strsplit(cur_line, " ", 2);
-		if(parts[0] == NULL || parts[1] == NULL){
-			g_set_error(error, 0, 1, "Syntax error: %s:%d", plugin->table_file, line_num);
-			
-		}
+static void 
+infinoted_plugin_replacer_clean_key(gchar* key){
+	//replace final _ with space
+	guint key_slen = strlen(key);
+	if (key[key_slen - 1] == '_'){
+		key[key_slen - 1] = ' ';
 	}
-	g_strfreev(lines);//forse*/
 }
+
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
                                        gpointer plugin_info,
@@ -108,14 +123,16 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 	for (guint i = 0; i < plugin->replace_words_len; i++) {
 		//check no recursion:
 		//get value
-		gchar* key = plugin->replace_words[i];
+		gchar* key = g_strdup(plugin->replace_words[i]);
 		gchar* val = g_key_file_get_value(gkf, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, error);
 		if (NULL == val)
 			return FALSE;
+		infinoted_plugin_replacer_clean_key(key);
 		if (NULL != strstr(val, key)) {
 			g_set_error(error, 0, 1, "recursive key '%s' in group '%s'", key, INFINOTED_PLUGIN_REPLACER_KEY_GROUP);
 			return FALSE;
 		}
+		g_free(key);
 	}
 	/*
 	//read file
@@ -144,7 +161,17 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
 static void
 infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 {
-	//get buffer text
+	//block text-insert and text-erase signal dispatch
+	g_signal_handlers_block_by_func(
+    info->buffer,
+    G_CALLBACK(infinoted_plugin_replacer_text_inserted_cb),
+    info
+  );
+  g_signal_handlers_block_by_func(
+    info->buffer,
+    G_CALLBACK(infinoted_plugin_replacer_text_erased_cb),
+    info
+  );
 	infinoted_plugin_replacer_check_enabled( info);  
 	if (FALSE == info->enabled)
 		return;
@@ -152,29 +179,58 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 														 //ricorsioni disastrose
 	InfTextBuffer* buf = info->buffer;
 
+
   //foreach replace_words
 	for (guint i = 0; i < info->plugin->replace_words_len; i++) {
 		gint diff = 0;
+		//foreach word the buffer must be re-read to allow nested macros
 		InfTextChunk* chunk = inf_text_buffer_get_slice(buf,
 																										0,
 																										inf_text_buffer_get_length(buf));
 		gsize out_len;
 		gchar* buf_str = inf_text_chunk_get_text(chunk, &out_len);
 		gchar* tmp_buf_str = buf_str;
-		gchar* key = info->plugin->replace_words[i];
+		//get key string
+		gchar* key = g_strdup(info->plugin->replace_words[i]);	//g_strdup because it will be modified
+		guint key_slen = strlen(key);
+		guint key_ulen = g_utf8_strlen(key, -1);
+		//get val string
 		gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
+		if (val == NULL) continue;
+		guint val_slen = strlen(val);
+		guint val_ulen = g_utf8_strlen(val, -1);
+		
+		infinoted_plugin_replacer_clean_key(key);
+		
+		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+				infinoted_log_info(
+					log,
+					"key: %s", key);
 		//get position, if present
 		while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
+			//g_strstr_len returns a pointer to the location of key
+			//however we need the character count to the location
 			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
 			offset += diff;
+			diff += val_ulen - key_ulen;
 			//replace
-			diff += g_utf8_strlen(val, -1) - g_utf8_strlen(key, -1);
-			inf_text_buffer_erase_text(buf, offset, g_utf8_strlen(key, -1), info->user);
-			inf_text_buffer_insert_text(buf,offset,val,strlen(val), g_utf8_strlen(val, -1), info->user);
+			inf_text_buffer_insert_text(buf, offset,val,val_slen, val_ulen, info->user);
+			inf_text_buffer_erase_text(buf, offset + val_ulen, key_ulen, info->user);
 			tmp_buf_str += strlen(key);
 		}
+		g_free(key);
 		
 	}
+	g_signal_handlers_unblock_by_func(
+    info->buffer,
+    G_CALLBACK(infinoted_plugin_replacer_text_inserted_cb),
+    info
+  );
+  g_signal_handlers_unblock_by_func(
+    info->buffer,
+    G_CALLBACK(infinoted_plugin_replacer_text_erased_cb),
+    info
+  );
 }
 
 static void
@@ -193,7 +249,7 @@ infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info
 {
 	InfTextBuffer* buffer = info->buffer;
 	//Magic string to use at the beginning of the file
-  gchar* magic_string = "replacer on\n";
+  gchar* magic_string = "#replacer on\n";
   guint magic_string_length = strlen(magic_string);
   guint buffer_length = inf_text_buffer_get_length(buffer);
   if (buffer_length > magic_string_length){
@@ -235,6 +291,7 @@ infinoted_plugin_replacer_text_inserted_cb(InfTextBuffer* buffer,
   InfinotedPluginReplacerSessionInfo* info;
   info = (InfinotedPluginReplacerSessionInfo*)user_data;
   
+
   //check enabled
   InfdDirectory* directory;
 	
@@ -367,7 +424,7 @@ infinoted_plugin_replacer_user_join_cb(InfRequest* request,
   {
     infinoted_log_warning(
       infinoted_plugin_manager_get_log(info->plugin->manager),
-      _("Could not join Replacer user for document: %s\n"),
+      "Could not join Replacer user for document: %s\n",
       error->message
     );
   }
@@ -498,6 +555,7 @@ infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
   info->user = NULL;
   info->dispatch = NULL;
   info->enabled = FALSE;
+  info->locked = FALSE;
   g_object_ref(proxy);
 
   g_object_get(G_OBJECT(proxy), "session", &session, NULL);
@@ -600,8 +658,8 @@ static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
     G_STRUCT_OFFSET(InfinotedPluginReplacer, replace_table),
     infinoted_parameter_convert_string,
     0,
-    N_("File to be used as a replace table."),
-    N_("RTABLE")
+    "File to be used as a replace table.",
+    "RTABLE"
   }, {
     NULL,
     0,
@@ -613,8 +671,8 @@ static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
 
 const InfinotedPlugin INFINOTED_PLUGIN = {
   "replacer",
-  N_("This plugin makes sure that at the end of every document there is "
-     "always a fixed number of empty lines."),
+  "This plugin replaces text with custom snippets defined in a \
+		configuration file",
   INFINOTED_PLUGIN_REPLACER_OPTIONS,
   sizeof(InfinotedPluginReplacer),
   0,

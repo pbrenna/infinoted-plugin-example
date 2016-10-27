@@ -1,5 +1,5 @@
 AC_PREREQ(2.60)
-AC_INIT([infinoted-plugin-replacer], [1.0], [armin@arbur.net])
+AC_INIT([infinoted-plugin-replacer], [0.1], [pietrobrenna@zoho.com])
 AM_INIT_AUTOMAKE([-Wall dist-bzip2 foreign])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES])
 AM_MAINTAINER_MODE
