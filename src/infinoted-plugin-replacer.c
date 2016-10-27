@@ -49,7 +49,7 @@
 //#include "inf-i18n.h"
 #include <string.h>
 
-#define INFINOTED_PLUGIN_REPLACER_KEY_GROUP "replacer"
+#define INFINOTED_PLUGIN_REPLACER_KEY_GROUP "replace-table"
 typedef struct _InfinotedPluginReplacer InfinotedPluginReplacer;
 struct _InfinotedPluginReplacer {
   InfinotedPluginManager* manager;

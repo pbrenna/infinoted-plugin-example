@@ -16,9 +16,9 @@ $ sudo make install
 ```
 
 # Configuration
-1. Create your ``replace_table.txt``: 
+1. Create your ``replace-table.txt``: 
    ```
-   [replacer]
+   [replace-table]
    alpha = α
    beta_ = β
    ```
@@ -33,16 +33,16 @@ $ sudo make install
 
    ```
    [replacer]
-   replace-table = /path/to/your/replace_table.txt
+   replace-table = /path/to/your/replace-table.txt
    ```
 
 # Usage
-The plugin does nothing by default. It must be enabled (file-by-file) by 
+The plugin does nothing by default. It must be enabled (file by file) by 
 having
 ```
 #replacer on
 ```
-, immediately followed by a newline, at the beginning of the text document.
+followed by a newline, at the beginning of the text document.
 
 ## Licensing
 
