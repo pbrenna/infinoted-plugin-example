@@ -55,6 +55,22 @@ struct _InfinotedPluginReplacerHasAvailableUsersData {
 };
 
 #include "infinoted-plugin-replacer.h"
+
+static void 
+infinoted_plugin_replacer_info_initialize(gpointer plugin_info){
+  InfinotedPluginReplacer* plugin;
+  plugin = (InfinotedPluginReplacer*)plugin_info;
+  plugin->replace_table = g_strdup("Aaaaaaaasd");
+}
+
+
+static void
+infinoted_plugin_replacer_parse_table(InfinotedPluginReplacer* plugin,
+																			GError** error,
+																			gchar* table_file)
+{
+	
+}
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
                                        gpointer plugin_info,
@@ -65,7 +81,18 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 
   plugin->manager = manager;
 
-  return TRUE;
+	//read file
+	gchar* table_file;	//la variabile viene allocata nella funzione g_file_get_contents
+	gsize table_file_len;
+	gboolean success = g_file_get_contents(plugin->replace_table,
+																				 &table_file,
+																				 &table_file_len,
+																				 error);
+	if (success == TRUE) {
+		infinoted_plugin_replacer_parse_table(plugin);
+	}
+	g_free(table_file);
+	return success;
 }
 
 static void
@@ -121,19 +148,18 @@ infinoted_plugin_replacer_check_enabled(InfTextBuffer* buffer,
 		InfTextChunk* inizio = inf_text_buffer_get_slice(buffer, 0, magic_string_length);
 		gsize real_len = inf_text_chunk_get_length(inizio);
 		gchar* inizio_chars = inf_text_chunk_get_text(inizio, &real_len);
+		//inizio_chars non è nul_terminated come invece strcmp richiede
 		gchar nul_terminated[magic_string_length+1];
 		memcpy(nul_terminated, inizio_chars, magic_string_length);
 		nul_terminated[magic_string_length]='\0';
-		
-		
+				
 		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
 		if (0 == g_strcmp0(nul_terminated, magic_string)) {
 			if (!info->enabled) {
 				infinoted_log_info(
 					log,
-					"Replacer turned on by magic string");
+					"Replacer turned on by magic string; %s", info->plugin->replace_table);
 				info->enabled = TRUE;
-				//infinoted_plugin_replacer_join_user(info);
 			}
 		} else {
 			if (info->enabled) {
@@ -141,7 +167,6 @@ infinoted_plugin_replacer_check_enabled(InfTextBuffer* buffer,
 					log,
 					"Replacer turned off: %s", nul_terminated);
 				info->enabled = FALSE;
-				//infinoted_plugin_replacer_remove_user(info);
 			}
 		}
 	}
@@ -523,8 +548,8 @@ static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
     "replace-table",
     INFINOTED_PARAMETER_STRING,
     INFINOTED_PARAMETER_REQUIRED,
-    offsetof(InfinotedPluginReplacer, replace_table),
-    infinoted_parameter_convert_nonnegative,
+    G_STRUCT_OFFSET(InfinotedPluginReplacer, replace_table),
+    infinoted_parameter_convert_string,
     0,
     N_("File to be used as a replace table."),
     N_("RTABLE")
@@ -546,7 +571,7 @@ const InfinotedPlugin INFINOTED_PLUGIN = {
   0,
   sizeof(InfinotedPluginReplacerSessionInfo),
   "InfTextSession",
-  NULL,
+  infinoted_plugin_replacer_info_initialize,
   infinoted_plugin_replacer_initialize,
   infinoted_plugin_replacer_deinitialize,
   NULL,
