@@ -15,7 +15,7 @@ $ ./autogen.sh --prefix=/usr
 $ sudo make install
 ```
 
-# Usage
+# Configuration
 1. Create your ``replace_table.txt``: 
    ```
    [replacer]
@@ -35,6 +35,14 @@ $ sudo make install
    [replacer]
    replace-table = /path/to/your/replace_table.txt
    ```
+
+# Usage
+The plugin does nothing by default. It must be enabled (file-by-file) by 
+having
+```
+#replacer on
+```
+, immediately followed by a newline, at the beginning of the text document.
 
 ## Licensing
 
