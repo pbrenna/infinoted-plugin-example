@@ -1,76 +1,66 @@
-/* infinoted-plugin-replacer - An replacer infinoted plugin
- * Copyright (c) 2014, Armin Burgmeier <armin@arbur.net>
+/* libinfinity - a GObject-based infinote implementation
+ * Copyright (C) 2007-2015 Armin Burgmeier <armin@arbur.net>
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free
+ * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
  */
 
 #include <infinoted/infinoted-plugin-manager.h>
 #include <infinoted/infinoted-parameter.h>
-//#include <libinftext/inf-text-session.h>
-#include <libinftext/inf-text-buffer.h>
-#include <math.h>
 
-/* The plugin instance structure */
+#include <libinftext/inf-text-session.h>
+#include <libinftext/inf-text-buffer.h>
+
+#include <libinfinity/common/inf-request-result.h>
+#include "inf-signals.h"
+#include "inf-i18n.h"
+#include <string.h>
+
 typedef struct _InfinotedPluginReplacer InfinotedPluginReplacer;
 struct _InfinotedPluginReplacer {
-  /* Pointer to the plugin manager, providing an interface to the
-   * state of the server. */
   InfinotedPluginManager* manager;
-  /* Greeting text for all new connections */
-  gchar* greeting_text;
-};
-typedef struct _InfinotedPluginReplacerSession InfinotedPluginReplacerSession;
-struct _InfinotedPluginReplacerSession{
-  InfTextBuffer* buffer;
-  InfSession* session;
+  guint n_lines;
 };
 
-static void
-infinoted_plugin_replacer_info_initialize(gpointer plugin_info)
-{
+typedef struct _InfinotedPluginReplacerSessionInfo
+  InfinotedPluginReplacerSessionInfo;
+struct _InfinotedPluginReplacerSessionInfo {
   InfinotedPluginReplacer* plugin;
-  plugin = (InfinotedPluginReplacer*)plugin_info;
+  InfSessionProxy* proxy;
+  InfRequest* request;
+  InfUser* user;
+  InfTextBuffer* buffer;
+  InfIoDispatch* dispatch;
+};
 
-  plugin->manager = NULL;
-  plugin->greeting_text = g_strdup("Hello"); /* Default value */
-}
+typedef struct _InfinotedPluginReplacerHasAvailableUsersData
+  InfinotedPluginReplacerHasAvailableUsersData;
+struct _InfinotedPluginReplacerHasAvailableUsersData {
+  InfUser* own_user;
+  gboolean has_available_user;
+};
 
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
-                                    gpointer plugin_info,
-                                    GError** error)
+                                       gpointer plugin_info,
+                                       GError** error)
 {
   InfinotedPluginReplacer* plugin;
-  gboolean result;
-
   plugin = (InfinotedPluginReplacer*)plugin_info;
 
-  /* Pointer to plugin manager should be saved since it provides access
-   * to the rest of infinoted. */
   plugin->manager = manager;
-
-  /* Validate input option */
-  if(plugin->greeting_text == NULL || *plugin->greeting_text == '\0')
-  {
-    g_set_error(
-      error,
-      g_quark_from_static_string("INFINOTED_PLUGIN_REPLACER_ERROR"),
-      0,
-      "Greeting text must not be empty"
-    );
-
-    return FALSE;
-  }
 
   return TRUE;
 }
@@ -80,145 +70,483 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
 {
   InfinotedPluginReplacer* plugin;
   plugin = (InfinotedPluginReplacer*)plugin_info;
-
-  g_free(plugin->greeting_text);
 }
 
-static void qualcosa(InfTextBuffer *inftextbuffer,
-					guint          arg1,
-					InfTextChunk  *arg2,
-					InfUser       *arg3,
-					gpointer       user_data){
-  /*InfinotedPluginReplacerSession* session_info = 
-	(InfinotedPluginReplacerSession*) user_data;
-  const gchar* text = g_malloc(5*sizeof(gchar));
-  
-  InfUserTable* user_table = inf_session_get_user_table(session_info->session);
-  
-  
-  text = "ciao";
-  inf_text_buffer_insert_text(session_info->buffer,
-							  0,
-							  text,
-							  4,
-							  4,
-							  arg3);*/
-}
-
-static void
-infinoted_plugin_replacer_greet_user(InfinotedPluginReplacer* plugin,
-                                    InfUser* user)
+static guint
+infinoted_plugin_replacer_count_lines(InfTextBuffer* buffer)
 {
-  InfinotedLog* log;
-  log = infinoted_plugin_manager_get_log(plugin->manager);
-  
-  infinoted_log_info(
-    log,
-    "%s, %s",
-    plugin->greeting_text,
-    inf_user_get_name(user)
-  );
-}
+  /* Count the number of lines at the end of the document. This assumes the
+   * buffer content is in UTF-8, which is currently hardcoded in infinoted. */
+  InfTextBufferIter* iter;
+  guint n_lines;
+  gboolean has_iter;
 
-static void
-infinoted_plugin_replacer_available_user_added_cb(InfUserTable* user_table,
-                                                 InfUser* user,
-                                                 gpointer user_data)
-{
-	
-  infinoted_plugin_replacer_greet_user(
-    (InfinotedPluginReplacer*)user_data,
-    user
-  );
-}
+  guint length;
+  gsize bytes;
+  gchar* text;
+  gchar* pos;
+  gchar* new_pos;
+  gunichar c;
 
-static void
-infinoted_plugin_replacer_foreach_user_func(InfUser* user,
-                                           gpointer user_data)
-{
-  /* This is called for every user, also disconnected ones. We only greet
-   * available users. */
-  if(inf_user_get_status(user) != INF_USER_UNAVAILABLE)
+  g_assert(strcmp(inf_text_buffer_get_encoding(buffer), "UTF-8") == 0);
+
+  n_lines = 0;
+
+  iter = inf_text_buffer_create_end_iter(buffer);
+  if(iter == NULL) return 0;
+
+  do
   {
-    infinoted_plugin_replacer_greet_user(
-      (InfinotedPluginReplacer*)user_data,
-      user
+    length = inf_text_buffer_iter_get_length(buffer, iter);
+    bytes = inf_text_buffer_iter_get_bytes(buffer, iter);
+    text = inf_text_buffer_iter_get_text(buffer, iter);
+    pos = text + bytes;
+
+    while(length > 0)
+    {
+      new_pos = g_utf8_prev_char(pos);
+      g_assert(bytes >= (pos - new_pos));
+
+      c = g_utf8_get_char(new_pos);
+      if(c == '\n' || g_unichar_type(c) == G_UNICODE_LINE_SEPARATOR)
+        ++n_lines;
+      else
+        break;
+
+      --length;
+      bytes -= (pos - new_pos);
+      pos = new_pos;
+    }
+
+    g_free(text);
+  } while(length == 0 && inf_text_buffer_iter_prev(buffer, iter));
+
+  inf_text_buffer_destroy_iter(buffer, iter);
+  return n_lines;
+}
+
+static void
+infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
+{
+  guint cur_lines;
+  guint n;
+  gchar* text;
+
+  cur_lines = infinoted_plugin_replacer_count_lines(info->buffer);
+
+  if(cur_lines > info->plugin->n_lines)
+  {
+    n = cur_lines - info->plugin->n_lines;
+
+    inf_text_buffer_erase_text(
+      info->buffer,
+      inf_text_buffer_get_length(info->buffer) - n,
+      n,
+      info->user
+    );
+  }
+  else if(cur_lines < info->plugin->n_lines)
+  {
+    n = info->plugin->n_lines - cur_lines;
+    text = g_malloc(n * sizeof(gchar));
+    memset(text, '\n', n);
+
+    inf_text_buffer_insert_text(
+      info->buffer,
+      inf_text_buffer_get_length(info->buffer),
+      text,
+      n,
+      n,
+      info->user
     );
   }
 }
 
 static void
-infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
-                                       InfSessionProxy* proxy,
-                                       gpointer plugin_info,
-                                       gpointer session_info_mem)
+infinoted_plugin_replacer_run_dispatch_func(gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  info->dispatch = NULL;
+
+  infinoted_plugin_replacer_run(info);
+}
+
+static void
+infinoted_plugin_replacer_text_inserted_cb(InfTextBuffer* buffer,
+                                             guint pos,
+                                             InfTextChunk* chunk,
+                                             InfUser* user,
+                                             gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  InfdDirectory* directory;
+
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  if(info->dispatch == NULL)
+  {
+    directory = infinoted_plugin_manager_get_directory(info->plugin->manager);
+
+    info->dispatch = inf_io_add_dispatch(
+      infd_directory_get_io(directory),
+      infinoted_plugin_replacer_run_dispatch_func,
+      info,
+      NULL
+    );
+  }
+}
+
+static void
+infinoted_plugin_replacer_text_erased_cb(InfTextBuffer* buffer,
+                                           guint pos,
+                                           InfTextChunk* chunk,
+                                           InfUser* user,
+                                           gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  InfdDirectory* directory;
+
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  if(info->dispatch == NULL)
+  {
+    directory = infinoted_plugin_manager_get_directory(info->plugin->manager);
+
+    info->dispatch = inf_io_add_dispatch(
+      infd_directory_get_io(directory),
+      infinoted_plugin_replacer_run_dispatch_func,
+      info,
+      NULL
+    );
+  }
+}
+
+static void
+infinoted_plugin_replacer_remove_user(
+  InfinotedPluginReplacerSessionInfo* info)
+{
+  InfSession* session;
+  InfUser* user;
+
+  g_assert(info->user != NULL);
+  g_assert(info->request == NULL);
+
+  user = info->user;
+  info->user = NULL;
+
+  g_object_get(G_OBJECT(info->proxy), "session", &session, NULL); 
+
+  inf_session_set_user_status(session, user, INF_USER_UNAVAILABLE);
+  g_object_unref(user);
+
+  inf_signal_handlers_disconnect_by_func(
+    G_OBJECT(info->buffer),
+    G_CALLBACK(infinoted_plugin_replacer_text_inserted_cb),
+    info
+  );
+
+  inf_signal_handlers_disconnect_by_func(
+    G_OBJECT(info->buffer),
+    G_CALLBACK(infinoted_plugin_replacer_text_erased_cb),
+    info
+  );
+
+  g_object_unref(session);
+}
+
+static void
+infinoted_plugin_replacer_has_available_users_foreach_func(InfUser* user,
+                                                             gpointer udata)
+{
+  InfinotedPluginReplacerHasAvailableUsersData* data;
+  data = (InfinotedPluginReplacerHasAvailableUsersData*)udata;
+
+  /* Return TRUE if there are non-local users connected */
+  if(user != data->own_user &&
+     inf_user_get_status(user) != INF_USER_UNAVAILABLE &&
+     (inf_user_get_flags(user) & INF_USER_LOCAL) == 0)
+  {
+    data->has_available_user = TRUE;
+  }
+}
+
+static gboolean
+infinoted_plugin_replacer_has_available_users(
+  InfinotedPluginReplacerSessionInfo* info)
+{
+  InfinotedPluginReplacerHasAvailableUsersData data;
+  InfSession* session;
+  InfUserTable* user_table;
+
+  g_object_get(G_OBJECT(info->proxy), "session", &session, NULL); 
+  user_table = inf_session_get_user_table(session);
+
+  data.has_available_user = FALSE;
+  data.own_user = info->user;
+
+  inf_user_table_foreach_user(
+    user_table,
+    infinoted_plugin_replacer_has_available_users_foreach_func,
+    &data
+  );
+
+  g_object_unref(session);
+  return data.has_available_user;
+}
+
+static void
+infinoted_plugin_replacer_user_join_cb(InfRequest* request,
+                                         const InfRequestResult* result,
+                                         const GError* error,
+                                         gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  InfUser* user;
+
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  info->request = NULL;
+
+  if(error != NULL)
+  {
+    infinoted_log_warning(
+      infinoted_plugin_manager_get_log(info->plugin->manager),
+      _("Could not join Replacer user for document: %s\n"),
+      error->message
+    );
+  }
+  else
+  {
+    inf_request_result_get_join_user(result, NULL, &user);
+
+    info->user = user;
+    g_object_ref(info->user);
+
+    /* Initial run */
+    infinoted_plugin_replacer_run(info);
+
+    g_signal_connect(
+      G_OBJECT(info->buffer),
+      "text-inserted",
+      G_CALLBACK(infinoted_plugin_replacer_text_inserted_cb),
+      info
+    );
+
+    g_signal_connect(
+      G_OBJECT(info->buffer),
+      "text-erased",
+      G_CALLBACK(infinoted_plugin_replacer_text_erased_cb),
+      info
+    );
+
+    /* It can happen that while the request is being processed, the situation
+     * changes again. */
+    if(infinoted_plugin_replacer_has_available_users(info) == FALSE)
+    {
+      infinoted_plugin_replacer_remove_user(info);
+    }
+  }
+}
+
+static void
+infinoted_plugin_replacer_add_available_user_cb(InfUserTable* user_table,
+                                                  InfUser* user,
+                                                  gpointer user_data);
+
+static void
+infinoted_plugin_replacer_join_user(
+  InfinotedPluginReplacerSessionInfo* info)
 {
   InfSession* session;
   InfUserTable* user_table;
-  InfinotedPluginReplacerSession* session_info = 
-	(InfinotedPluginReplacerSession*) session_info_mem;
-  
-  g_object_get(G_OBJECT(proxy), "session", &session, NULL);
-  session_info->buffer = 
-	(InfTextBuffer*) inf_session_get_buffer(session);
-  session_info->session = session;
+
+  g_assert(info->user == NULL);
+  g_assert(info->request == NULL);
+
+  g_object_get(G_OBJECT(info->proxy), "session", &session, NULL);
   user_table = inf_session_get_user_table(session);
-  
-  /* Greet every user that will join: */
+
+  /* Prevent double user join attempt by blocking the callback for
+   * joining our local user. */
+  g_signal_handlers_block_by_func(
+    user_table,
+    G_CALLBACK(infinoted_plugin_replacer_add_available_user_cb),
+    info
+  );
+
+  info->request = inf_text_session_join_user(
+    info->proxy,
+    "Replacer",
+    INF_USER_ACTIVE,
+    0.0,
+    inf_text_buffer_get_length(info->buffer),
+    0,
+    infinoted_plugin_replacer_user_join_cb,
+    info
+  );
+
+  g_signal_handlers_unblock_by_func(
+    user_table,
+    G_CALLBACK(infinoted_plugin_replacer_add_available_user_cb),
+    info
+  );
+
+  g_object_unref(session);
+}
+
+static void
+infinoted_plugin_replacer_add_available_user_cb(InfUserTable* user_table,
+                                                  InfUser* user,
+                                                  gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  if(info->user == NULL && info->request == NULL &&
+     infinoted_plugin_replacer_has_available_users(info))
+  {
+    infinoted_plugin_replacer_join_user(info);
+  }
+}
+
+static void
+infinoted_plugin_replacer_remove_available_user_cb(InfUserTable* user_table,
+                                                     InfUser* user,
+                                                     gpointer user_data)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  info = (InfinotedPluginReplacerSessionInfo*)user_data;
+
+  if(info->user != NULL &&
+     !infinoted_plugin_replacer_has_available_users(info))
+  {
+    infinoted_plugin_replacer_remove_user(info);
+  }
+}
+
+static void
+infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
+                                          InfSessionProxy* proxy,
+                                          gpointer plugin_info,
+                                          gpointer session_info)
+{
+  InfinotedPluginReplacerSessionInfo* info;
+  InfSession* session;
+  InfUserTable* user_table;
+
+  info = (InfinotedPluginReplacerSessionInfo*)session_info;
+
+  info->plugin = (InfinotedPluginReplacer*)plugin_info;
+  info->proxy = proxy;
+  info->request = NULL;
+  info->user = NULL;
+  info->dispatch = NULL;
+  g_object_ref(proxy);
+
+  g_object_get(G_OBJECT(proxy), "session", &session, NULL);
+  g_assert(inf_session_get_status(session) == INF_SESSION_RUNNING);
+  info->buffer = INF_TEXT_BUFFER(inf_session_get_buffer(session));
+  g_object_ref(info->buffer);
+
+  user_table = inf_session_get_user_table(session);
+
   g_signal_connect(
     G_OBJECT(user_table),
     "add-available-user",
-    G_CALLBACK(infinoted_plugin_replacer_available_user_added_cb),
-    plugin_info
-  );
-  g_signal_connect(
-    G_OBJECT(session_info->buffer),
-    "text-insterted",
-    G_CALLBACK(qualcosa),
-    session_info
+    G_CALLBACK(infinoted_plugin_replacer_add_available_user_cb),
+    info
   );
 
-  /* Greet every user that has already joined: */
-  inf_user_table_foreach_user(
-    user_table,
-    infinoted_plugin_replacer_foreach_user_func,
-    plugin_info
+  g_signal_connect(
+    G_OBJECT(user_table),
+    "remove-available-user",
+    G_CALLBACK(infinoted_plugin_replacer_remove_available_user_cb),
+    info
   );
+
+  /* Only join a user when there are other nonlocal users available, so that
+   * we don't keep the session from going idle. */
+  if(infinoted_plugin_replacer_has_available_users(info) == TRUE)
+    infinoted_plugin_replacer_join_user(info);
 
   g_object_unref(session);
 }
 
 static void
 infinoted_plugin_replacer_session_removed(const InfBrowserIter* iter,
-                                         InfSessionProxy* proxy,
-                                         gpointer plugin_info,
-                                         gpointer session_info)
+                                            InfSessionProxy* proxy,
+                                            gpointer plugin_info,
+                                            gpointer session_info)
 {
+  InfinotedPluginReplacerSessionInfo* info;
+  InfdDirectory* directory;
   InfSession* session;
   InfUserTable* user_table;
 
-  g_object_get(G_OBJECT(proxy), "session", &session, NULL);
+  info = (InfinotedPluginReplacerSessionInfo*)session_info;
+
+  g_object_get(G_OBJECT(info->proxy), "session", &session, NULL);
   user_table = inf_session_get_user_table(session);
 
   g_signal_handlers_disconnect_by_func(
     G_OBJECT(user_table),
-    G_CALLBACK(infinoted_plugin_replacer_available_user_added_cb),
-    plugin_info
+    G_CALLBACK(infinoted_plugin_replacer_add_available_user_cb),
+    info
   );
+
+  g_signal_handlers_disconnect_by_func(
+    G_OBJECT(user_table),
+    G_CALLBACK(infinoted_plugin_replacer_remove_available_user_cb),
+    info
+  );
+
+  if(info->dispatch != NULL)
+  {
+    directory = infinoted_plugin_manager_get_directory(info->plugin->manager);
+    inf_io_remove_dispatch(infd_directory_get_io(directory), info->dispatch);
+    info->dispatch = NULL;
+  }
+
+  if(info->user != NULL)
+  {
+    infinoted_plugin_replacer_remove_user(info);
+  }
+
+  if(info->buffer != NULL)
+  {
+    g_object_unref(info->buffer);
+    info->buffer = NULL;
+  }
+
+  if(info->request != NULL)
+  {
+    inf_signal_handlers_disconnect_by_func(
+      info->request,
+      G_CALLBACK(infinoted_plugin_replacer_user_join_cb),
+      info
+    );
+
+    info->request = NULL;
+  }
+
+  g_assert(info->proxy != NULL);
+  g_object_unref(info->proxy);
 
   g_object_unref(session);
 }
 
 static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
   {
-    "greeting-text",
-    INFINOTED_PARAMETER_STRING,
-    0, /* no flags, if parameter is not given default is used */
-    G_STRUCT_OFFSET(InfinotedPluginReplacer, greeting_text),
-    infinoted_parameter_convert_string,
+    "n-lines",
+    INFINOTED_PARAMETER_INT,
+    INFINOTED_PARAMETER_REQUIRED,
+    offsetof(InfinotedPluginReplacer, n_lines),
+    infinoted_parameter_convert_nonnegative,
     0,
-    "Text that is written into the log for each user",
-    "TEXT"
+    N_("The number of empty lines to keep at the end of the document."),
+    N_("LINES")
   }, {
     NULL,
     0,
@@ -230,20 +558,18 @@ static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
 
 const InfinotedPlugin INFINOTED_PLUGIN = {
   "replacer",
-  "An replacer plugin that writes a greeting message into the log for "
-  "every user that joins a session.",
+  N_("This plugin makes sure that at the end of every document there is "
+     "always a fixed number of empty lines."),
   INFINOTED_PLUGIN_REPLACER_OPTIONS,
   sizeof(InfinotedPluginReplacer),
   0,
-  sizeof(InfinotedPluginReplacerSession),
+  sizeof(InfinotedPluginReplacerSessionInfo),
   "InfTextSession",
-  infinoted_plugin_replacer_info_initialize,
+  NULL,
   infinoted_plugin_replacer_initialize,
   infinoted_plugin_replacer_deinitialize,
   NULL,
   NULL,
   infinoted_plugin_replacer_session_added,
-  infinoted_plugin_replacer_session_removed,
+  infinoted_plugin_replacer_session_removed
 };
-
-/* vim:set et sw=2 ts=2: */
