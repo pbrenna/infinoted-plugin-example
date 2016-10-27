@@ -46,9 +46,6 @@ followed by a newline, at the beginning of the text document.
 
 ## Licensing
 
-This software is licensed under the GPL license. The full license text
-follows.
-
 Copyright (C) 2016 Pietro Brenna <pietrobrenna@zoho.com>
 
 Copyright (C) 2016 Alessandro Bregoli <>
