@@ -24,6 +24,7 @@ $ sudo make install
    ```
    A trailing underscore in the rule will only allow the replacement
    to happen if the word is followed by a space.
+   
    **Important**: self-recursion in a rule will prevent server startup;
    recursion between rules must be used with caution.
 
