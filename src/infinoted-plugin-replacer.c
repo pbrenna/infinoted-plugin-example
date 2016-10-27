@@ -28,10 +28,11 @@
 #include "inf-i18n.h"
 #include <string.h>
 
+int once = 0;
 typedef struct _InfinotedPluginReplacer InfinotedPluginReplacer;
 struct _InfinotedPluginReplacer {
   InfinotedPluginManager* manager;
-  guint n_lines;
+  gchar* replace_table;
 };
 
 typedef struct _InfinotedPluginReplacerSessionInfo
@@ -43,6 +44,7 @@ struct _InfinotedPluginReplacerSessionInfo {
   InfUser* user;
   InfTextBuffer* buffer;
   InfIoDispatch* dispatch;
+  gboolean enabled;
 };
 
 typedef struct _InfinotedPluginReplacerHasAvailableUsersData
@@ -52,6 +54,7 @@ struct _InfinotedPluginReplacerHasAvailableUsersData {
   gboolean has_available_user;
 };
 
+#include "infinoted-plugin-replacer.h"
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
                                        gpointer plugin_info,
@@ -72,94 +75,27 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
   plugin = (InfinotedPluginReplacer*)plugin_info;
 }
 
-static guint
-infinoted_plugin_replacer_count_lines(InfTextBuffer* buffer)
-{
-  /* Count the number of lines at the end of the document. This assumes the
-   * buffer content is in UTF-8, which is currently hardcoded in infinoted. */
-  InfTextBufferIter* iter;
-  guint n_lines;
-  gboolean has_iter;
-
-  guint length;
-  gsize bytes;
-  gchar* text;
-  gchar* pos;
-  gchar* new_pos;
-  gunichar c;
-
-  g_assert(strcmp(inf_text_buffer_get_encoding(buffer), "UTF-8") == 0);
-
-  n_lines = 0;
-
-  iter = inf_text_buffer_create_end_iter(buffer);
-  if(iter == NULL) return 0;
-
-  do
-  {
-    length = inf_text_buffer_iter_get_length(buffer, iter);
-    bytes = inf_text_buffer_iter_get_bytes(buffer, iter);
-    text = inf_text_buffer_iter_get_text(buffer, iter);
-    pos = text + bytes;
-
-    while(length > 0)
-    {
-      new_pos = g_utf8_prev_char(pos);
-      g_assert(bytes >= (pos - new_pos));
-
-      c = g_utf8_get_char(new_pos);
-      if(c == '\n' || g_unichar_type(c) == G_UNICODE_LINE_SEPARATOR)
-        ++n_lines;
-      else
-        break;
-
-      --length;
-      bytes -= (pos - new_pos);
-      pos = new_pos;
-    }
-
-    g_free(text);
-  } while(length == 0 && inf_text_buffer_iter_prev(buffer, iter));
-
-  inf_text_buffer_destroy_iter(buffer, iter);
-  return n_lines;
-}
 
 static void
 infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 {
-  guint cur_lines;
-  guint n;
+  /*guint n;
   gchar* text;
+	if (once == 0){
+		once = 1;
+		n = 3;
+		text = g_malloc(n * sizeof(gchar));
+		memset(text, 'a', n);
 
-  cur_lines = infinoted_plugin_replacer_count_lines(info->buffer);
-
-  if(cur_lines > info->plugin->n_lines)
-  {
-    n = cur_lines - info->plugin->n_lines;
-
-    inf_text_buffer_erase_text(
-      info->buffer,
-      inf_text_buffer_get_length(info->buffer) - n,
-      n,
-      info->user
-    );
-  }
-  else if(cur_lines < info->plugin->n_lines)
-  {
-    n = info->plugin->n_lines - cur_lines;
-    text = g_malloc(n * sizeof(gchar));
-    memset(text, '\n', n);
-
-    inf_text_buffer_insert_text(
-      info->buffer,
-      inf_text_buffer_get_length(info->buffer),
-      text,
-      n,
-      n,
-      info->user
-    );
-  }
+		inf_text_buffer_insert_text(
+			info->buffer,
+			0,
+			text,
+			n,
+			n,
+			info->user
+		);
+	}*/
 }
 
 static void
@@ -174,6 +110,45 @@ infinoted_plugin_replacer_run_dispatch_func(gpointer user_data)
 }
 
 static void
+infinoted_plugin_replacer_check_enabled(InfTextBuffer* buffer,
+																				InfinotedPluginReplacerSessionInfo* info)
+{
+	//Magic string to use at the beginning of the file
+  gchar* magic_string = "replacer on\n";
+  guint magic_string_length = strlen(magic_string);
+  guint buffer_length = inf_text_buffer_get_length(buffer);
+  if (buffer_length > magic_string_length){
+		InfTextChunk* inizio = inf_text_buffer_get_slice(buffer, 0, magic_string_length);
+		gsize real_len = inf_text_chunk_get_length(inizio);
+		gchar* inizio_chars = inf_text_chunk_get_text(inizio, &real_len);
+		gchar nul_terminated[magic_string_length+1];
+		memcpy(nul_terminated, inizio_chars, magic_string_length);
+		nul_terminated[magic_string_length]='\0';
+		
+		
+		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+		if (0 == g_strcmp0(nul_terminated, magic_string)) {
+			if (!info->enabled) {
+				infinoted_log_info(
+					log,
+					"Replacer turned on by magic string");
+				info->enabled = TRUE;
+				//infinoted_plugin_replacer_join_user(info);
+			}
+		} else {
+			if (info->enabled) {
+				infinoted_log_info(
+					log,
+					"Replacer turned off: %s", nul_terminated);
+				info->enabled = FALSE;
+				//infinoted_plugin_replacer_remove_user(info);
+			}
+		}
+	}
+}
+
+
+static void
 infinoted_plugin_replacer_text_inserted_cb(InfTextBuffer* buffer,
                                              guint pos,
                                              InfTextChunk* chunk,
@@ -181,10 +156,12 @@ infinoted_plugin_replacer_text_inserted_cb(InfTextBuffer* buffer,
                                              gpointer user_data)
 {
   InfinotedPluginReplacerSessionInfo* info;
-  InfdDirectory* directory;
-
   info = (InfinotedPluginReplacerSessionInfo*)user_data;
-
+  
+  //check enabled
+  infinoted_plugin_replacer_check_enabled(buffer, info);  
+  InfdDirectory* directory;
+	
   if(info->dispatch == NULL)
   {
     directory = infinoted_plugin_manager_get_directory(info->plugin->manager);
@@ -210,6 +187,9 @@ infinoted_plugin_replacer_text_erased_cb(InfTextBuffer* buffer,
 
   info = (InfinotedPluginReplacerSessionInfo*)user_data;
 
+  //check enabled
+  infinoted_plugin_replacer_check_enabled(buffer, info);  
+  
   if(info->dispatch == NULL)
   {
     directory = infinoted_plugin_manager_get_directory(info->plugin->manager);
@@ -443,6 +423,7 @@ infinoted_plugin_replacer_session_added(const InfBrowserIter* iter,
   info->request = NULL;
   info->user = NULL;
   info->dispatch = NULL;
+  info->enabled = FALSE;
   g_object_ref(proxy);
 
   g_object_get(G_OBJECT(proxy), "session", &session, NULL);
@@ -539,14 +520,14 @@ infinoted_plugin_replacer_session_removed(const InfBrowserIter* iter,
 
 static const InfinotedParameterInfo INFINOTED_PLUGIN_REPLACER_OPTIONS[] = {
   {
-    "n-lines",
-    INFINOTED_PARAMETER_INT,
+    "replace-table",
+    INFINOTED_PARAMETER_STRING,
     INFINOTED_PARAMETER_REQUIRED,
-    offsetof(InfinotedPluginReplacer, n_lines),
+    offsetof(InfinotedPluginReplacer, replace_table),
     infinoted_parameter_convert_nonnegative,
     0,
-    N_("The number of empty lines to keep at the end of the document."),
-    N_("LINES")
+    N_("File to be used as a replace table."),
+    N_("RTABLE")
   }, {
     NULL,
     0,

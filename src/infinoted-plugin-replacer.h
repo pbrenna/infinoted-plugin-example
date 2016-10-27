@@ -1,0 +1,3 @@
+
+static void infinoted_plugin_replacer_join_user(InfinotedPluginReplacerSessionInfo*);
+static void infinoted_plugin_replacer_remove_user(InfinotedPluginReplacerSessionInfo*);
