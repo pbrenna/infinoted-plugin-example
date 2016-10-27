@@ -144,14 +144,13 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
 static void
 infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 {
+	//get buffer text
+	infinoted_plugin_replacer_check_enabled( info);  
 	if (FALSE == info->enabled)
 		return;
-	//get buffer text
-	InfTextBuffer* buf = info->buffer;
-
-  
   //guint substitutions = 0; //conto delle sostituzioni, per evitare
 														 //ricorsioni disastrose
+	InfTextBuffer* buf = info->buffer;
 
   //foreach replace_words
 	for (guint i = 0; i < info->plugin->replace_words_len; i++) {
@@ -165,7 +164,7 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		gchar* key = info->plugin->replace_words[i];
 		gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
 		//get position, if present
-		if (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
+		while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
 			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
 			offset += diff;
 			//replace
@@ -189,9 +188,9 @@ infinoted_plugin_replacer_run_dispatch_func(gpointer user_data)
 }
 
 static void
-infinoted_plugin_replacer_check_enabled(InfTextBuffer* buffer,
-																				InfinotedPluginReplacerSessionInfo* info)
+infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info)
 {
+	InfTextBuffer* buffer = info->buffer;
 	//Magic string to use at the beginning of the file
   gchar* magic_string = "replacer on\n";
   guint magic_string_length = strlen(magic_string);
@@ -236,7 +235,6 @@ infinoted_plugin_replacer_text_inserted_cb(InfTextBuffer* buffer,
   info = (InfinotedPluginReplacerSessionInfo*)user_data;
   
   //check enabled
-  infinoted_plugin_replacer_check_enabled(buffer, info);  
   InfdDirectory* directory;
 	
   if(info->dispatch == NULL)
@@ -264,8 +262,6 @@ infinoted_plugin_replacer_text_erased_cb(InfTextBuffer* buffer,
 
   info = (InfinotedPluginReplacerSessionInfo*)user_data;
 
-  //check enabled
-  infinoted_plugin_replacer_check_enabled(buffer, info);  
   
   if(info->dispatch == NULL)
   {
