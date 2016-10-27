@@ -171,6 +171,7 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 			diff += g_utf8_strlen(val, -1) - g_utf8_strlen(key, -1);
 			inf_text_buffer_erase_text(buf, offset, g_utf8_strlen(key, -1), info->user);
 			inf_text_buffer_insert_text(buf,offset,val,strlen(val), g_utf8_strlen(val, -1), info->user);
+			tmp_buf_str += strlen(key);
 		}
 		
 	}
