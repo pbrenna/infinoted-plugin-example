@@ -1,2 +1,6 @@
 language: c
-install: ./autogen.sh
+sudo: required
+before_install:
+	- sudo apt-get install libinfinity-0.6-dev
+script: ./autogen.sh && ./configure && make
+
