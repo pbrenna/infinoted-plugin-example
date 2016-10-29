@@ -5,6 +5,6 @@ before_install:
  - echo "deb http://ftp.de.debian.org/debian jessie main" | sudo tee -a /etc/apt/sources.list
  - sudo cat /etc/apt/sources.list
  - sudo apt-get update
- - sudo apt-get install libinfinity-0.6-dev --force-yes
+ - sudo apt-get install libinfinity-0.6-dev --force-yes --force
 script: ./autogen.sh && ./configure && make
 
