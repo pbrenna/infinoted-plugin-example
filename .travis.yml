@@ -2,8 +2,8 @@ language: c
 dist: trusty
 sudo: required
 before_install:
- - echo "deb http://ftp.de.debian.org/debian jessie main" >> /etc/apt/sources.list
- - cat /etc/apt/sources.list
+ - echo "deb http://ftp.de.debian.org/debian jessie main" | sudo tee -a /etc/apt/sources.list
+ - sudo cat /etc/apt/sources.list
  - sudo apt-get update
  - sudo apt-get upgrade
  - sudo apt-get install libinfinity-0.6-dev
