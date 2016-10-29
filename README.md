@@ -14,6 +14,11 @@ This was tested on Arch Linux:
 $ ./autogen.sh --prefix=/usr
 $ sudo make install
 ```
+This worked on Debian Jessie x86_64:
+```
+$ ./autogen.sh --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu/
+$ sudo make install
+```
 
 # Configuration
 1. Create your ``replace-table.txt``: 

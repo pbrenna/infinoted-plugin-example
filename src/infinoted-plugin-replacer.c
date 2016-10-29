@@ -119,7 +119,8 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 		return FALSE;
 	
 	//foreach replace_words
-	for (guint i = 0; i < plugin->replace_words_len; i++) {
+	guint i;
+	for (i = 0; i < plugin->replace_words_len; i++) {
 		//check no recursion:
 		//get value
 		gchar* key = g_strdup(plugin->replace_words[i]);
@@ -181,7 +182,8 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 
 
   //foreach replace_words
-	for (guint i = 0; i < info->plugin->replace_words_len; i++) {
+  guint i = 0;
+	for (i = 0; i < info->plugin->replace_words_len; i++) {
 		gint diff = 0;
 		//foreach word the buffer must be re-read to allow nested macros
 		InfTextChunk* chunk = inf_text_buffer_get_slice(buf,
