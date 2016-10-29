@@ -1,5 +1,5 @@
 # infinoted-plugin-replacer
-
+[![Build Status](https://api.travis-ci.org/pbrenna/infinoted-plugin-replacer.svg?branch=master)](https://travis-ci.org/pbrenna/infinoted-plugin-replacer)
 This is a simple example plugin for
 [infinoted](https://github.com/gobby/gobby/wiki/Dedicated-Server),
 the dedicated Gobby server. This plugin replaces text with custom 
