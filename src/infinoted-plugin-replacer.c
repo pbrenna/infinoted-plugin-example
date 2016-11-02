@@ -206,10 +206,10 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		
 		//get position, if present
 		while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
-			InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
-					infinoted_log_info(
+			//InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+			/*		infinoted_log_info(
 					log,
-					"rule: %s", key);
+					"rule: %s", key);*/
 			//g_strstr_len returns a pointer to the location of key
 			//however we need the character count to the location
 			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
@@ -221,7 +221,9 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 			tmp_buf_str += strlen(key);
 		}
 		g_free(key);
-		
+		g_free(val);
+		g_free(buf_str);
+		g_free(chunk);
 	}
 	g_signal_handlers_unblock_by_func(
     info->buffer,
@@ -279,7 +281,11 @@ infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info
 				info->enabled = FALSE;
 			}
 		}
+		g_free(inizio);
+		g_free(log);
+		g_free(inizio_chars);
 	}
+	g_free(buffer);
 }
 
 
