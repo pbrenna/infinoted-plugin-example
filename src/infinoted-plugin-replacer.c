@@ -223,7 +223,7 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		g_free(key);
 		g_free(val);
 		g_free(buf_str);
-		//g_free(chunk);
+		inf_text_chunk_free(chunk);
 	}
 	g_signal_handlers_unblock_by_func(
     info->buffer,
@@ -282,6 +282,8 @@ infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info
 			}
 		}
 		g_free(inizio_chars);
+		inf_text_chunk_free(inizio);
+		//g_object_unref(log);
 	}
 }
 
