@@ -22,24 +22,26 @@ $ sudo make install
 ```
 
 # Configuration
-1. Create your ``replace-table.txt``: 
+1. Create your ``replace-table.json``: 
+   ```json
+   {
+   	"alpha" : "α",
+	"beta" : "β",
+	"\\latex_style_rule" : "Latex rules"
+   }
    ```
-   [replace-table]
-   alpha = α
-   beta_ = β
-   ```
-   A trailing underscore in the rule will only allow the replacement
-   to happen if the word is followed by a space.
    
-   **Important**: self-recursion in a rule will prevent server startup;
-   recursion between rules must be used with caution.
+   **Important**: a macro is not allowed to be a prefix of another macro;
+   recursion in the macros is well-defined behaviour but can lead to unwanted
+   results.
+   
 
 2. Add "replacer" to the plugin list in your ``infinoted.conf`` file
 3. Append a ``[replacer]`` section to ``infinoted.conf``:
 
    ```
    [replacer]
-   replace-table = /path/to/your/replace-table.txt
+   replace-table = /path/to/your/replace-table.json
    ```
 
 # Usage

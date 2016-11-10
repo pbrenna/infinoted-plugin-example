@@ -136,7 +136,7 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 			                     plugin->replace_words[i]);
 			if (find != NULL && find - plugin->replace_words[j] == 0){
 				g_set_error(error, 0, 0, "Error: '%s' is a prefix of '%s', \
-which is not allowed",
+which is not allowed: a simple solution is to append a space.",
 				            plugin->replace_words[i], plugin->replace_words[j]);
 				return FALSE;
 			}
