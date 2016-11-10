@@ -104,6 +104,7 @@ infinoted_plugin_replacer_clean_key(gchar* key){
 	}
 }
 
+
 static gboolean
 infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
                                        gpointer plugin_info,
@@ -113,11 +114,6 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
   plugin = (InfinotedPluginReplacer*)plugin_info;
 
   plugin->manager = manager;
-	//GKeyFile* gkf = g_key_file_new();
-	//gboolean success = g_key_file_load_from_file(gkf, plugin->replace_table, G_KEY_FILE_NONE, error);
-	/*if (FALSE == success)
-		return FALSE;*/
-	//plugin->replace_dict = gkf;
   plugin->parser = json_parser_new ();
   gboolean success = json_parser_load_from_file (plugin->parser,
 																							   plugin->replace_table,
@@ -126,9 +122,26 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
 		return success;
   plugin->reader = json_reader_new (json_parser_get_root (plugin->parser));
 	plugin->replace_words = json_reader_list_members(plugin->reader);
-	plugin->replace_words_len = json_reader_count_members(plugin->reader);
 	if (NULL == plugin->replace_words)
 		return FALSE;
+	plugin->replace_words_len = json_reader_count_members(plugin->reader);
+	//check for prefixes
+	int i;
+	for (i = 0; i < plugin->replace_words_len; i++){
+		int j;
+		for (j = 0; j <  plugin->replace_words_len; j++) {
+			if (i == j)
+				continue;
+			gchar* find = strstr(plugin->replace_words[j],
+			                     plugin->replace_words[i]);
+			if (find != NULL && find - plugin->replace_words[j] == 0){
+				g_set_error(error, 0, 0, "Error: '%s' is a prefix of '%s', \
+which is not allowed",
+				            plugin->replace_words[i], plugin->replace_words[j]);
+				return FALSE;
+			}
+		}
+	}	
 	return TRUE;
 }
 
@@ -187,7 +200,6 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		guint key_slen = strlen(key);
 		guint key_ulen = g_utf8_strlen(key, -1);
 		//get val string
-		//gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
 		json_reader_read_member(info->plugin->reader, key);
 		const gchar* val = json_reader_get_string_value (info->plugin->reader);
 		json_reader_end_member(info->plugin->reader);
