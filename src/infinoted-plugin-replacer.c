@@ -48,6 +48,8 @@
 #include "inf-signals.h"
 //#include "inf-i18n.h"
 #include <string.h>
+#include <json-glib/json-glib.h>
+
 
 #define INFINOTED_PLUGIN_REPLACER_KEY_GROUP "replace-table"
 typedef struct _InfinotedPluginReplacer InfinotedPluginReplacer;
@@ -57,6 +59,8 @@ struct _InfinotedPluginReplacer {
   gchar** replace_words;
   GKeyFile* replace_dict;
   gsize replace_words_len;
+  JsonParser *parser;
+  JsonReader *reader;
 };
 
 typedef struct _InfinotedPluginReplacerSessionInfo
@@ -84,7 +88,10 @@ static void
 infinoted_plugin_replacer_info_initialize(gpointer plugin_info){
   InfinotedPluginReplacer* plugin;
   plugin = (InfinotedPluginReplacer*)plugin_info;
-  plugin->replace_table = g_strdup("Aaaaaaaasd");
+  plugin->replace_table = g_strdup("");
+  plugin->replace_words = NULL;
+  plugin->parser = NULL;
+  plugin->reader = NULL;
 }
 
 
@@ -106,47 +113,23 @@ infinoted_plugin_replacer_initialize(InfinotedPluginManager* manager,
   plugin = (InfinotedPluginReplacer*)plugin_info;
 
   plugin->manager = manager;
-	GKeyFile* gkf = g_key_file_new();
-	gboolean success = g_key_file_load_from_file(gkf, plugin->replace_table, G_KEY_FILE_NONE, error);
-	if (FALSE == success)
-		return FALSE;
-	plugin->replace_dict = gkf;
-	plugin->replace_words = g_key_file_get_keys (gkf,
-																							 INFINOTED_PLUGIN_REPLACER_KEY_GROUP,
-																							 &plugin->replace_words_len,
-																							 error);
+	//GKeyFile* gkf = g_key_file_new();
+	//gboolean success = g_key_file_load_from_file(gkf, plugin->replace_table, G_KEY_FILE_NONE, error);
+	/*if (FALSE == success)
+		return FALSE;*/
+	//plugin->replace_dict = gkf;
+  plugin->parser = json_parser_new ();
+  gboolean success = json_parser_load_from_file (plugin->parser,
+																							   plugin->replace_table,
+																						 		 error);
+  if (success == FALSE)
+		return success;
+  plugin->reader = json_reader_new (json_parser_get_root (plugin->parser));
+	plugin->replace_words = json_reader_list_members(plugin->reader);
+	plugin->replace_words_len = json_reader_count_members(plugin->reader);
 	if (NULL == plugin->replace_words)
 		return FALSE;
-	
-	//foreach replace_words
-	guint i;
-	for (i = 0; i < plugin->replace_words_len; i++) {
-		//check no recursion:
-		//get value
-		gchar* key = g_strdup(plugin->replace_words[i]);
-		gchar* val = g_key_file_get_value(gkf, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, error);
-		if (NULL == val)
-			return FALSE;
-		infinoted_plugin_replacer_clean_key(key);
-		if (NULL != strstr(val, key)) {
-			g_set_error(error, 0, 1, "recursive key '%s' in group '%s'", key, INFINOTED_PLUGIN_REPLACER_KEY_GROUP);
-			return FALSE;
-		}
-		g_free(key);
-	}
-	/*
-	//read file
-	gchar* table_file;	//la variabile viene allocata nella funzione g_file_get_contents
-	gsize table_file_len;
-	gboolean success = g_file_get_contents(plugin->replace_table,
-																				 &table_file,
-																				 &table_file_len,
-																				 error);
-	if (success == TRUE) {
-		infinoted_plugin_replacer_parse_table(plugin);
-	}
-	g_free(table_file);*/
-	return success;
+	return TRUE;
 }
 
 static void
@@ -154,7 +137,14 @@ infinoted_plugin_replacer_deinitialize(gpointer plugin_info)
 {
   InfinotedPluginReplacer* plugin;
   plugin = (InfinotedPluginReplacer*)plugin_info;
-  g_strfreev(plugin->replace_words);
+  if (plugin->replace_words != NULL){
+		g_strfreev(plugin->replace_words);
+	}
+  g_free(plugin->replace_table);
+  if(plugin->reader != NULL)
+		g_object_unref (plugin->reader);
+  if(plugin->parser != NULL)
+		g_object_unref (plugin->parser);
 }
 
 
@@ -197,33 +187,36 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		guint key_slen = strlen(key);
 		guint key_ulen = g_utf8_strlen(key, -1);
 		//get val string
-		gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
-		if (val == NULL) continue;
-		guint val_slen = strlen(val);
-		guint val_ulen = g_utf8_strlen(val, -1);
-		
-		infinoted_plugin_replacer_clean_key(key);
-		
-		//get position, if present
-		while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
-			//InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
-			/*		infinoted_log_info(
-					log,
-					"rule: %s", key);*/
-			//g_strstr_len returns a pointer to the location of key
-			//however we need the character count to the location
-			glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
-			offset += diff;
-			diff += val_ulen - key_ulen;
-			//replace
-			inf_text_buffer_insert_text(buf, offset,val,val_slen, val_ulen, info->user);
-			inf_text_buffer_erase_text(buf, offset + val_ulen, key_ulen, info->user);
-			tmp_buf_str += strlen(key);
+		//gchar* val = g_key_file_get_value(info->plugin->replace_dict, INFINOTED_PLUGIN_REPLACER_KEY_GROUP, key, NULL);
+		json_reader_read_member(info->plugin->reader, key);
+		const gchar* val = json_reader_get_string_value (info->plugin->reader);
+		json_reader_end_member(info->plugin->reader);
+		if (val != NULL) {
+
+			guint val_slen = strlen(val);
+			guint val_ulen = g_utf8_strlen(val, -1);
+						
+			//get position, if present
+			while (NULL != (tmp_buf_str = g_strstr_len(tmp_buf_str, -1, key))) {
+				//InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+				/*		infinoted_log_info(
+						log,
+						"rule: %s", key);*/
+				//g_strstr_len returns a pointer to the location of key
+				//however we need the character count to the location
+				glong offset = g_utf8_pointer_to_offset (buf_str, tmp_buf_str);
+				offset += diff;
+				diff += val_ulen - key_ulen;
+				//replace
+				inf_text_buffer_insert_text(buf, offset,val,val_slen, val_ulen, info->user);
+				inf_text_buffer_erase_text(buf, offset + val_ulen, key_ulen, info->user);
+				tmp_buf_str += strlen(key);
+			}
 		}
-		g_free(key);
-		g_free(val);
-		g_free(buf_str);
 		inf_text_chunk_free(chunk);
+		g_free(buf_str);
+		g_free(key);
+		//g_free(val);
 	}
 	g_signal_handlers_unblock_by_func(
     info->buffer,

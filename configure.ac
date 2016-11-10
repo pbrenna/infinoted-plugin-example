@@ -18,7 +18,7 @@ AM_PROG_AR
 AC_PROG_LIBTOOL
 AM_PROG_CC_C_O
 
-PKG_CHECK_MODULES([infinoted_plugin_replacer], [libinfinity-0.6 libinfinoted-plugin-manager-0.6 libinftext-0.6])
+PKG_CHECK_MODULES([infinoted_plugin_replacer], [json-glib-1.0 libinfinity-0.6 libinfinoted-plugin-manager-0.6 libinftext-0.6])
 
 AC_CONFIG_FILES([
   Makefile
