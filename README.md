@@ -25,9 +25,9 @@ $ sudo make install
 1. Create your ``replace-table.json``: 
    ```json
    {
-   	"alpha" : "α",
-	"beta" : "β",
-	"\\latex_style_rule" : "Latex rules"
+      "alpha" : "α",
+      "beta" : "β",
+      "\\latex_style_rule" : "Latex rules"
    }
    ```
    
