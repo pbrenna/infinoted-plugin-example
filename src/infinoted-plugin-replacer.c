@@ -186,6 +186,7 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 
   //foreach replace_words
   guint i = 0;
+  const GError* err;
 	for (i = 0; i < info->plugin->replace_words_len; i++) {
 		gint diff = 0;
 		//foreach word the buffer must be re-read to allow nested macros
@@ -202,6 +203,11 @@ infinoted_plugin_replacer_run(InfinotedPluginReplacerSessionInfo* info)
 		//get val string
 		json_reader_read_member(info->plugin->reader, key);
 		const gchar* val = json_reader_get_string_value (info->plugin->reader);
+		
+		if (NULL != (err = json_reader_get_error(info->plugin->reader))){
+			g_print("ERROR: %s\n", err->message);
+			json_reader_set_root(info->plugin->reader,json_parser_get_root (info->plugin->parser));
+		}
 		json_reader_end_member(info->plugin->reader);
 		if (val != NULL) {
 
@@ -260,7 +266,9 @@ infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info
 	//Magic string to use at the beginning of the file
   gchar* magic_string = "#replacer on\n";
   guint magic_string_length = strlen(magic_string);
+  gboolean oldval = info->enabled;
   guint buffer_length = inf_text_buffer_get_length(buffer);
+  info->enabled = FALSE;
   if (buffer_length > magic_string_length){
 		InfTextChunk* inizio = inf_text_buffer_get_slice(buffer, 0, magic_string_length);
 		gsize real_len = inf_text_chunk_get_length(inizio);
@@ -270,25 +278,21 @@ infinoted_plugin_replacer_check_enabled(InfinotedPluginReplacerSessionInfo* info
 		memcpy(nul_terminated, inizio_chars, magic_string_length);
 		nul_terminated[magic_string_length]='\0';
 				
-		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
 		if (0 == g_strcmp0(nul_terminated, magic_string)) {
-			if (!info->enabled) {
-				infinoted_log_info(
-					log,
-					"Replacer turned on by magic string; %s", info->plugin->replace_table);
-				info->enabled = TRUE;
-			}
-		} else {
-			if (info->enabled) {
-				infinoted_log_info(
-					log,
-					"Replacer turned off: %s", nul_terminated);
-				info->enabled = FALSE;
-			}
+			info->enabled = TRUE;
 		}
 		g_free(inizio_chars);
 		inf_text_chunk_free(inizio);
 		//g_object_unref(log);
+	} 
+	
+	if(oldval != info->enabled){
+		InfinotedLog* log = infinoted_plugin_manager_get_log(info->plugin->manager);
+		if (oldval == FALSE){
+			infinoted_log_info(log, "Replacer turned on by magic string");
+		} else {
+			infinoted_log_info(log, "Replacer turned off");
+		}
 	}
 }
 
